@@ -191,8 +191,35 @@ const CableVisualization = () => {
     const aBottomPoints = getDynamicConnectionPoints(nodeA, 'bottom', abCables.length + acCables.length, zoom);
     const bTopPoints = getDynamicConnectionPoints(nodeB, 'top', abCables.length, zoom);
     const cTopPoints = getDynamicConnectionPoints(nodeC, 'top', acCables.length, zoom);
-    const bRightPoints = getDynamicConnectionPoints(nodeB, 'right', bcCables.length, zoom);
-    const cLeftPoints = getDynamicConnectionPoints(nodeC, 'left', bcCables.length, zoom);
+    
+    // Special handling for B-C connections to ensure they remain truly horizontal
+    // When we generate connection points for B-C, we need to ensure they have matching y-coordinates
+    const bcCableCount = bcCables.length;
+    const bRightPoints = [];
+    const cLeftPoints = [];
+    
+    if (bcCableCount > 0) {
+      // Calculate the midpoint y-coordinate between B and C for horizontal cables
+      const nodeB_centerY = nodeB.y + nodeB.height / 2;
+      const nodeC_centerY = nodeC.y + nodeC.height / 2;
+      
+      // Only apply spacing if needed based on zoom level
+      const bcSpacing = calculateDynamicSpacing(zoom, bcCableCount);
+      
+      for (let i = 0; i < bcCableCount; i++) {
+        // Calculate vertical offset from the center
+        const offset = bcCableCount > 1 && bcSpacing > 0 
+          ? ((i - (bcCableCount - 1) / 2) * bcSpacing) 
+          : 0;
+          
+        // Calculate y-position - same for both endpoints to ensure straight horizontal line
+        const yPos = nodeB_centerY + offset;
+        
+        // Add points at the same y-coordinate on both nodes
+        bRightPoints.push({ x: nodeB.x + nodeB.width, y: yPos });
+        cLeftPoints.push({ x: nodeC.x, y: yPos });
+      }
+    }
     
     // Calculate dynamic spacing for the main horizontal and vertical paths
     const verticalSpacing = calculateDynamicSpacing(zoom, abCables.length + acCables.length);
@@ -285,52 +312,30 @@ const CableVisualization = () => {
       cableRoutes[cable.id] = path;
     });
     
-    // Process B-C connections - direct horizontal route with minimal bends
-    const bcHorizontalY = 350; // Base Y position for B-C connections
+    // Process B-C connections - truly direct horizontal routes with no unnecessary bends
     const bcSpacing = calculateDynamicSpacing(zoom, bcCables.length);
     
     bcCables.forEach((cable, idx) => {
       const bPoint = bRightPoints[idx];
       const cPoint = cLeftPoints[idx];
-      
-      // Calculate vertical offset for horizontal cables
-      const verticalOffset = bcSpacing > 0 ? ((idx - (bcCables.length - 1) / 2) * bcSpacing) : 0;
-      
       const path = [];
       
+      // For B-C connections, we want truly straight horizontal lines
+      // The key insight is that we need to ensure the bPoint and cPoint are at the same y-coordinate
+      
       if (cable.source === 'B' && cable.target === 'C') {
-        // B to C - simplest path possible
+        // B to C - completely straight path
         path.push(bPoint);
         
-        if (Math.abs(verticalOffset) > 0) {
-          // Only add offset segments if spacing is needed
-          const offsetY = bcHorizontalY + verticalOffset;
-          path.push({ x: bPoint.x + 20, y: bPoint.y }); // Short horizontal segment out from B
-          path.push({ x: bPoint.x + 20, y: offsetY }); // Vertical to offset position
-          path.push({ x: cPoint.x - 20, y: offsetY }); // Horizontal segment to near C
-          path.push({ x: cPoint.x - 20, y: cPoint.y }); // Vertical to align with C point
-        } else {
-          // Direct connection with minimal bends
-          path.push({ x: cPoint.x, y: bPoint.y });
-        }
-        
+        // Direct straight line to destination
+        // If we're at the same y-level (which will happen when zoomed out), use a direct line
+        // If we're at different y-levels (when zoomed in and points are spread), the line is still direct
         path.push(cPoint);
       } else {
-        // C to B - simplest path possible
+        // C to B - completely straight path
         path.push(cPoint);
         
-        if (Math.abs(verticalOffset) > 0) {
-          // Only add offset segments if spacing is needed
-          const offsetY = bcHorizontalY + verticalOffset;
-          path.push({ x: cPoint.x - 20, y: cPoint.y }); // Short horizontal segment out from C
-          path.push({ x: cPoint.x - 20, y: offsetY }); // Vertical to offset position
-          path.push({ x: bPoint.x + 20, y: offsetY }); // Horizontal segment to near B
-          path.push({ x: bPoint.x + 20, y: bPoint.y }); // Vertical to align with B point
-        } else {
-          // Direct connection with minimal bends
-          path.push({ x: bPoint.x, y: cPoint.y });
-        }
-        
+        // Direct straight line
         path.push(bPoint);
       }
       
