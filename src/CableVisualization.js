@@ -9,7 +9,7 @@ const CableVisualization = () => {
     height: window.innerHeight
   });
   
-  // Define nodes and channels
+  // Sample data - Can be replaced with any node/channel/cable configuration
   const nodes = [
     { id: 'A', x: 400, y: 100, width: 80, height: 80 },
     { id: 'B', x: 200, y: 300, width: 80, height: 80 },
@@ -20,7 +20,6 @@ const CableVisualization = () => {
     { id: 'channel1', y: 50, label: "Channel", labelX: 50, orientation: 'horizontal' }
   ];
 
-  // Define cables with explicit routing paths
   const cables = [
     { id: 'c1', path: ['A', 'B'], color: 'blue' },
     { id: 'c2', path: ['A', 'B'], color: 'orange' },
@@ -37,12 +36,10 @@ const CableVisualization = () => {
     { id: 'c13', path: ['A', 'C'], color: 'coral' },
     { id: 'c14', path: ['A', 'C'], color: 'gold' },
     { id: 'c15', path: ['A', 'C'], color: 'indigo' },
-    // These two go via the channel
     { id: 'c16', path: ['C', 'channel1', 'A'], color: 'maroon' },  
     { id: 'c17', path: ['C', 'channel1', 'A'], color: 'olive' },
     { id: 'c18', path: ['C', 'A'], color: 'navy' }
   ];
-  
 
   // Handle window resize
   useEffect(() => {
@@ -57,7 +54,7 @@ const CableVisualization = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Helper function to find element by ID
+  // Find any element (node or channel) by ID
   const getElementById = (id) => {
     const node = nodes.find(n => n.id === id);
     if (node) return { ...node, type: 'node' };
@@ -68,18 +65,18 @@ const CableVisualization = () => {
     return null;
   };
 
-  // Calculate dynamic spacing based on zoom level, minimum visibility threshold, and maximum edge space
-  const calculateDynamicSpacing = (zoom, numCables, edgeLength) => {
-    // If only one cable or no cables, no spacing needed
-    if (numCables <= 1) return 0;
+  // Calculate dynamic spacing based on zoom level and available space
+  const calculateDynamicSpacing = (zoom, numElements, availableSpace) => {
+    // If only one element or no elements, no spacing needed
+    if (numElements <= 1) return 0;
     
-    // Minimum spacing when zoomed out (cables start to overlap)
+    // Minimum spacing when zoomed out (elements start to overlap)
     const minSpacing = 1; 
     
-    // Threshold zoom level where cables should start separating
+    // Threshold zoom level where elements should start separating
     const zoomThreshold = 0.5;
     
-    // Maximum zoom level for fully separated cables
+    // Maximum zoom level for fully separated elements
     const maxZoomEffect = 3.0;
     
     // If we're below the threshold, no spacing needed
@@ -87,7 +84,7 @@ const CableVisualization = () => {
       return 0;
     }
     
-    // Calculate normalized zoom factor (0 to 1) for more gradual transitions
+    // Calculate normalized zoom factor (0 to 1) for gradual transitions
     const normalizedZoom = Math.min(
       (zoom.k - zoomThreshold) / (maxZoomEffect - zoomThreshold), 
       1.0
@@ -99,56 +96,163 @@ const CableVisualization = () => {
     // Base spacing that represents maximum separation at full zoom
     const baseSpacing = 80;
     
-    // Calculate spacing that scales with zoom level using a smoother curve
+    // Calculate spacing that scales with zoom level
     const zoomBasedSpacing = minSpacing + (baseSpacing * easedZoom);
     
-    // Calculate maximum spacing based on available edge length
-    // Use the entire edge length for spreading cables
-    const maxEdgeSpace = edgeLength;
+    // Calculate maximum spacing based on available space
+    const maxSpacing = availableSpace / (numElements + 1);
     
-    // Calculate maximum spacing between cables to fit within the edge
-    const maxSpacing = maxEdgeSpace / (numCables + 1);
-    
-    // Return the smaller of zoom-based spacing or maximum edge-based spacing
+    // Return the smaller of zoom-based spacing or maximum space-based spacing
     return Math.min(zoomBasedSpacing, maxSpacing);
   };
 
-  // Get connection points for a channel
-  const getChannelConnectionPoints = (channel, cableIdx, totalCables, zoom) => {
-    // Calculate spacing perpendicular to the channel
-    const channelSpacing = 2 + (zoom.k * 5);
+  // CENTRAL REGISTRY: Track all connections to each node edge
+  const createEdgeRegistry = () => {
+    const registry = {};
     
-    // Determine offset (alternating above/below)
-    // For even number of cables, distribute evenly
-    let offset;
-    if (totalCables % 2 === 0) {
-      offset = (cableIdx % 2 === 0) ? 
-        -channelSpacing * (Math.floor(cableIdx / 2) + 0.5) : 
-        channelSpacing * (Math.floor(cableIdx / 2) + 0.5);
-    } else {
-      // For odd number of cables, put one in the middle
-      if (cableIdx === 0) {
-        offset = 0;
-      } else {
-        offset = (cableIdx % 2 === 1) ? 
-          -channelSpacing * Math.ceil(cableIdx / 2) : 
-          channelSpacing * Math.ceil(cableIdx / 2);
-      }
-    }
+    // Initialize registry for all nodes and edges
+    nodes.forEach(node => {
+      registry[node.id] = {
+        top: { connections: [], count: 0 },
+        right: { connections: [], count: 0 },
+        bottom: { connections: [], count: 0 },
+        left: { connections: [], count: 0 }
+      };
+    });
     
-    // Channel position
-    return { x: 0, y: channel.y + offset, offset };
+    return registry;
   };
 
-  // Calculate dynamic connection points for node edges based on zoom level
-  const getDynamicConnectionPoints = (node, edge, numConnections, zoom) => {
-    if (numConnections <= 0) return [];
+  // Determine the optimal edges to connect based on relative positions
+  const determineOptimalEdges = (sourceNode, targetNode) => {
+    const sourceCenter = {
+      x: sourceNode.x + sourceNode.width / 2,
+      y: sourceNode.y + sourceNode.height / 2
+    };
     
-    // Maximum available space on this edge
-    const edgeLength = edge === 'top' || edge === 'bottom' ? node.width : node.height;
+    const targetCenter = {
+      x: targetNode.x + targetNode.width / 2,
+      y: targetNode.y + targetNode.height / 2
+    };
     
-    // Spacing between connection points - now takes into account edge length
-    const spacing = calculateDynamicSpacing(zoom, numConnections, edgeLength);
+    // Calculate center-to-center vector
+    const dx = targetCenter.x - sourceCenter.x;
+    const dy = targetCenter.y - sourceCenter.y;
+    
+    // Determine dominant direction for connection
+    if (Math.abs(dx) > Math.abs(dy)) {
+      // Horizontal connection dominates
+      return {
+        source: dx > 0 ? 'right' : 'left',
+        target: dx > 0 ? 'left' : 'right'
+      };
+    } else {
+      // Vertical connection dominates
+      return {
+        source: dy > 0 ? 'bottom' : 'top',
+        target: dy > 0 ? 'top' : 'bottom'
+      };
+    }
+  };
+
+  // Register a cable connection to an edge
+  const registerEdgeConnection = (registry, nodeId, edge, cable, connectionInfo) => {
+    if (!registry[nodeId]) {
+      registry[nodeId] = {
+        top: { connections: [], count: 0 },
+        right: { connections: [], count: 0 },
+        bottom: { connections: [], count: 0 },
+        left: { connections: [], count: 0 }
+      };
+    }
+    
+    if (!registry[nodeId][edge]) {
+      registry[nodeId][edge] = { connections: [], count: 0 };
+    }
+    
+    registry[nodeId][edge].connections.push({
+      cable,
+      ...connectionInfo
+    });
+    
+    registry[nodeId][edge].count = registry[nodeId][edge].connections.length;
+  };
+
+  // Analyze all cables and register their connections in the registry
+  const analyzeCableConnections = () => {
+    const edgeRegistry = createEdgeRegistry();
+    
+    // Process direct node-to-node cables
+    cables.forEach(cable => {
+      if (cable.path.length === 2) {
+        // Direct node-to-node connection
+        const sourceId = cable.path[0];
+        const targetId = cable.path[1];
+        
+        const sourceNode = getElementById(sourceId);
+        const targetNode = getElementById(targetId);
+        
+        if (!sourceNode || !targetNode || 
+            sourceNode.type !== 'node' || targetNode.type !== 'node') {
+          return;
+        }
+        
+        // Determine optimal edges for connection
+        const { source: sourceEdge, target: targetEdge } = 
+          determineOptimalEdges(sourceNode, targetNode);
+        
+        // Register connections in both directions
+        registerEdgeConnection(edgeRegistry, sourceId, sourceEdge, cable, {
+          role: 'source',
+          targetId,
+          targetEdge
+        });
+        
+        registerEdgeConnection(edgeRegistry, targetId, targetEdge, cable, {
+          role: 'target',
+          sourceId,
+          sourceEdge
+        });
+      } 
+      else if (cable.path.length === 3 && cable.path[1].includes('channel')) {
+        // Node -> Channel -> Node connection
+        const sourceId = cable.path[0];
+        const channelId = cable.path[1];
+        const targetId = cable.path[2];
+        
+        const sourceNode = getElementById(sourceId);
+        const channel = getElementById(channelId);
+        const targetNode = getElementById(targetId);
+        
+        if (!sourceNode || !channel || !targetNode) return;
+        
+        // Determine edge based on channel position relative to node
+        const sourceEdge = channel.y < sourceNode.y ? 'top' : 'bottom';
+        const targetEdge = channel.y < targetNode.y ? 'top' : 'bottom';
+        
+        // Register connections
+        registerEdgeConnection(edgeRegistry, sourceId, sourceEdge, cable, {
+          role: 'source',
+          targetId,
+          channelId,
+          targetEdge
+        });
+        
+        registerEdgeConnection(edgeRegistry, targetId, targetEdge, cable, {
+          role: 'target',
+          sourceId,
+          channelId,
+          sourceEdge
+        });
+      }
+    });
+    
+    return edgeRegistry;
+  };
+
+  // Calculate connection points for a node edge based on total connections
+  const calculateEdgeConnectionPoints = (node, edge, connections, zoom) => {
+    if (connections.length === 0) return [];
     
     // Get node center
     const nodeCenter = {
@@ -156,75 +260,80 @@ const CableVisualization = () => {
       y: node.y + node.height / 2
     };
     
-    // Calculate positions
+    // Determine available space on the edge
+    const edgeLength = (edge === 'top' || edge === 'bottom') ? node.width : node.height;
+    
+    // Calculate spacing between connection points
+    const spacing = calculateDynamicSpacing(zoom, connections.length, edgeLength);
+    
+    // Calculate points
     const points = [];
     
     // If no spacing needed or only one connection, position in the center of the edge
-    if (spacing === 0 || numConnections === 1) {
+    if (spacing === 0 || connections.length === 1) {
+      let point;
+      
       switch (edge) {
         case 'top':
-          points.push({ x: nodeCenter.x, y: node.y });
+          point = { x: nodeCenter.x, y: node.y };
           break;
         case 'right':
-          points.push({ x: node.x + node.width, y: nodeCenter.y });
+          point = { x: node.x + node.width, y: nodeCenter.y };
           break;
         case 'bottom':
-          points.push({ x: nodeCenter.x, y: node.y + node.height });
+          point = { x: nodeCenter.x, y: node.y + node.height };
           break;
         case 'left':
-          points.push({ x: node.x, y: nodeCenter.y });
+          point = { x: node.x, y: nodeCenter.y };
           break;
       }
       
-      // If only one connection, return early
-      if (numConnections === 1) {
-        return points;
-      }
-      
-      // If multiple connections but no spacing, duplicate the center point 
-      // to create multiple connections at the same point
-      while (points.length < numConnections) {
-        points.push({ ...points[0] });
+      // If multiple connections but no spacing, duplicate the center point
+      for (let i = 0; i < connections.length; i++) {
+        points.push({ ...point, cableId: connections[i].cable.id });
       }
       
       return points;
     }
     
-    // With multiple connections and spacing, distribute them evenly
-    // Calculate the total space needed based on the actual calculated spacing
-    const totalWidth = spacing * (numConnections - 1);
+    // Calculate the total space needed for all connections
+    const totalWidth = spacing * (connections.length - 1);
     
     // Start position (centered on the edge)
     const startOffset = -totalWidth / 2;
     
     // Generate evenly spaced points
-    for (let i = 0; i < numConnections; i++) {
+    for (let i = 0; i < connections.length; i++) {
       const offset = startOffset + (i * spacing);
-      
       let point;
+      
       switch (edge) {
         case 'top':
           point = { 
             x: nodeCenter.x + offset, 
-            y: node.y 
+            y: node.y,
+            cableId: connections[i].cable.id
           };
           break;
         case 'right':
           point = { 
             x: node.x + node.width, 
-            y: nodeCenter.y + offset 
+            y: nodeCenter.y + offset,
+            cableId: connections[i].cable.id
           };
           break;
         case 'bottom':
           point = { 
             x: nodeCenter.x + offset, 
-            y: node.y + node.height 
+            y: node.y + node.height,
+            cableId: connections[i].cable.id
           };
           break;
         case 'left':
           point = { 
             x: node.x, 
-            y: nodeCenter.y + offset 
+            y: nodeCenter.y + offset,
+            cableId: connections[i].cable.id
           };
           break;
       }
@@ -235,266 +344,314 @@ const CableVisualization = () => {
     return points;
   };
 
-  // Determine routes for all cables
+  // Calculate connection points for channel connections
+  const calculateChannelConnectionPoints = (channel, connections, zoom) => {
+    if (connections.length === 0) return [];
+    
+    // Calculate spacing perpendicular to the channel
+    const channelSpacing = 2 + (zoom.k * 5);
+    
+    const points = [];
+    
+    // Determine offsets (alternating above/below)
+    for (let i = 0; i < connections.length; i++) {
+      let offset;
+      
+      // For even number of connections, distribute evenly
+      if (connections.length % 2 === 0) {
+        offset = (i % 2 === 0) ? 
+          -channelSpacing * (Math.floor(i / 2) + 0.5) : 
+          channelSpacing * (Math.floor(i / 2) + 0.5);
+      } else {
+        // For odd number of connections, put one in the middle
+        if (i === 0) {
+          offset = 0;
+        } else {
+          offset = (i % 2 === 1) ? 
+            -channelSpacing * Math.ceil(i / 2) : 
+            channelSpacing * Math.ceil(i / 2);
+        }
+      }
+      
+      // Channel position depends on orientation
+      let point;
+      if (channel.orientation === 'horizontal') {
+        point = { 
+          x: 0, // Will be set later when calculating actual path
+          y: channel.y + offset,
+          offset,
+          cableId: connections[i].cable.id
+        };
+      } else {
+        point = {
+          x: channel.x + offset,
+          y: 0, // Will be set later when calculating actual path
+          offset,
+          cableId: connections[i].cable.id
+        };
+      }
+      
+      points.push(point);
+    }
+    
+    return points;
+  };
+
+  // Generate an orthogonal path between two points with proper routing
+  const generateOrthogonalPath = (
+    sourcePoint, targetPoint, sourceInfo, targetInfo, 
+    sourceNode, targetNode, pathConfig, zoom
+  ) => {
+    const path = [];
+    
+    // Add the source point
+    path.push(sourcePoint);
+    
+    // Minimum perpendicular extension from an edge
+    const minExtension = Math.max(1, zoom.k * 2);
+    
+    // Extract edge information
+    const sourceEdge = sourceInfo.edge;
+    const targetEdge = targetInfo.edge;
+    
+    // Handle direct connections (horizontal or vertical)
+    if ((sourceEdge === 'right' && targetEdge === 'left') || 
+        (sourceEdge === 'left' && targetEdge === 'right')) {
+      // Direct horizontal connection
+      // Add perpendicular extension from source
+      path.push({ 
+        x: sourcePoint.x + (sourceEdge === 'right' ? minExtension : -minExtension), 
+        y: sourcePoint.y 
+      });
+      
+      // Add perpendicular extension to target
+      path.push({ 
+        x: targetPoint.x + (targetEdge === 'right' ? minExtension : -minExtension), 
+        y: targetPoint.y 
+      });
+    } 
+    else if ((sourceEdge === 'top' && targetEdge === 'bottom') || 
+            (sourceEdge === 'bottom' && targetEdge === 'top')) {
+      // Direct vertical connection
+      // Add perpendicular extension from source
+      path.push({ 
+        x: sourcePoint.x, 
+        y: sourcePoint.y + (sourceEdge === 'bottom' ? minExtension : -minExtension) 
+      });
+      
+      // Add perpendicular extension to target
+      path.push({ 
+        x: targetPoint.x, 
+        y: targetPoint.y + (targetEdge === 'bottom' ? minExtension : -minExtension) 
+      });
+    } 
+    else {
+      // Indirect connection requiring turns
+      // First, add extension from source edge
+      let firstPoint;
+      switch (sourceEdge) {
+        case 'top':
+          firstPoint = { x: sourcePoint.x, y: sourcePoint.y - minExtension };
+          break;
+        case 'right':
+          firstPoint = { x: sourcePoint.x + minExtension, y: sourcePoint.y };
+          break;
+        case 'bottom':
+          firstPoint = { x: sourcePoint.x, y: sourcePoint.y + minExtension };
+          break;
+        case 'left':
+          firstPoint = { x: sourcePoint.x - minExtension, y: sourcePoint.y };
+          break;
+      }
+      path.push(firstPoint);
+      
+      // Calculate intermediate points for zigzag routing
+      // Determine midpoint for horizontal/vertical segments
+      const sourceCenterX = sourceNode.x + sourceNode.width / 2;
+      const sourceCenterY = sourceNode.y + sourceNode.height / 2;
+      const targetCenterX = targetNode.x + targetNode.width / 2;
+      const targetCenterY = targetNode.y + targetNode.height / 2;
+      
+      // Calculate midpoint y-value (for horizontal segments)
+      const midY = (sourceCenterY + targetCenterY) / 2;
+      
+      // Add vertical segment to midpoint Y
+      path.push({ x: firstPoint.x, y: midY });
+      
+      // Add horizontal segment to align with target X
+      path.push({ x: targetPoint.x, y: midY });
+      
+      // Add extension to target
+      let lastPoint;
+      switch (targetEdge) {
+        case 'top':
+          lastPoint = { x: targetPoint.x, y: targetPoint.y - minExtension };
+          break;
+        case 'right':
+          lastPoint = { x: targetPoint.x + minExtension, y: targetPoint.y };
+          break;
+        case 'bottom':
+          lastPoint = { x: targetPoint.x, y: targetPoint.y + minExtension };
+          break;
+        case 'left':
+          lastPoint = { x: targetPoint.x - minExtension, y: targetPoint.y };
+          break;
+      }
+      path.push(lastPoint);
+    }
+    
+    // Add the target point
+    path.push(targetPoint);
+    
+    return path;
+  };
+
+  // Generate channel path between source, channel and target
+  const generateChannelPath = (
+    sourcePoint, channelPoint, targetPoint,
+    sourceNode, targetNode, channel, zoom
+  ) => {
+    const path = [];
+    
+    // Start at source
+    path.push(sourcePoint);
+    
+    // Connect to channel with offset
+    path.push({ 
+      x: sourcePoint.x, 
+      y: channelPoint.y 
+    });
+    
+    // Horizontal segment along channel
+    path.push({ 
+      x: targetPoint.x, 
+      y: channelPoint.y 
+    });
+    
+    // Connect to target
+    path.push(targetPoint);
+    
+    return path;
+  };
+
+  // Calculate cable routes based on current zoom level
   const calculateCableRoutes = (zoom) => {
+    // Analyze and register all cable connections
+    const edgeRegistry = analyzeCableConnections();
+    
+    // Calculate connection points for all node edges
+    const nodeConnectionPoints = {};
+    nodes.forEach(node => {
+      nodeConnectionPoints[node.id] = {
+        top: [], right: [], bottom: [], left: []
+      };
+      
+      // Process each edge
+      ['top', 'right', 'bottom', 'left'].forEach(edge => {
+        if (edgeRegistry[node.id] && edgeRegistry[node.id][edge]) {
+          const connections = edgeRegistry[node.id][edge].connections;
+          
+          // Calculate connection points for this edge
+          const points = calculateEdgeConnectionPoints(node, edge, connections, zoom);
+          
+          // Store points with cable IDs for lookup
+          nodeConnectionPoints[node.id][edge] = points;
+        }
+      });
+    });
+    
+    // Calculate channel connection points
+    const channelConnectionPoints = {};
+    channels.forEach(channel => {
+      // Group cables by this channel
+      const channelCables = cables.filter(cable => 
+        cable.path.length === 3 && cable.path[1] === channel.id
+      );
+      
+      // Create mock connections array for consistent API
+      const connections = channelCables.map(cable => ({ cable }));
+      
+      // Calculate channel points
+      channelConnectionPoints[channel.id] = 
+        calculateChannelConnectionPoints(channel, connections, zoom);
+    });
+    
+    // Generate final cable routes
     const cableRoutes = {};
     
-    // Find nodes
-    const nodeA = nodes.find(n => n.id === 'A');
-    const nodeB = nodes.find(n => n.id === 'B');
-    const nodeC = nodes.find(n => n.id === 'C');
-    
-    // Calculate midpoint for horizontal segment
-    const midpointX = (nodeB.x + nodeB.width / 2 + nodeC.x) / 2;
-    const midpointY = 250;
-    
-    // Minimum distance cables should extend perpendicular to an edge before changing direction
-    const minPerpendicularExtension = 1 + (zoom.k * 2);
-    
-    // Group cables by their paths
-    const directNodeToNodeCables = {};
-    const channelCables = {};
-    
-    // Group cables by their endpoints for proper distribution
+    // Process direct node-to-node cables
     cables.forEach(cable => {
       if (cable.path.length === 2) {
         // Direct node-to-node cable
         const sourceId = cable.path[0];
         const targetId = cable.path[1];
-        const key = sourceId < targetId ? `${sourceId}-${targetId}` : `${targetId}-${sourceId}`;
         
-        if (!directNodeToNodeCables[key]) {
-          directNodeToNodeCables[key] = [];
-        }
-        directNodeToNodeCables[key].push(cable);
-      } else if (cable.path.length === 3 && cable.path[1].startsWith('channel')) {
-        // Node -> Channel -> Node path
-        const channelId = cable.path[1];
-        if (!channelCables[channelId]) {
-          channelCables[channelId] = [];
-        }
-        channelCables[channelId].push(cable);
-      }
-    });
-    
-    // Process node-to-node paths
-    Object.values(directNodeToNodeCables).forEach(cablesGroup => {
-      if (cablesGroup.length === 0) return;
-      
-      // Identify the source and target nodes from the first cable
-      const firstCable = cablesGroup[0];
-      const sourceId = firstCable.path[0];
-      const targetId = firstCable.path[1];
-      
-      // Get node objects
-      const sourceNode = nodes.find(n => n.id === sourceId);
-      const targetNode = nodes.find(n => n.id === targetId);
-      
-      if (!sourceNode || !targetNode) return;
-      
-      // Check which type of connection this is (A-B, A-C, B-C)
-      const isABConnection = (sourceId === 'A' && targetId === 'B') || (sourceId === 'B' && targetId === 'A');
-      const isACConnection = (sourceId === 'A' && targetId === 'C') || (sourceId === 'C' && targetId === 'A');
-      const isBCConnection = (sourceId === 'B' && targetId === 'C') || (sourceId === 'C' && targetId === 'B');
-      
-      // Determine connection points based on the type
-      let sourcePoints = [];
-      let targetPoints = [];
-      
-      if (isABConnection) {
-        sourcePoints = getDynamicConnectionPoints(
-          sourceId === 'A' ? nodeA : nodeB, 
-          sourceId === 'A' ? 'bottom' : 'top', 
-          cablesGroup.length, 
-          zoom
-        );
-        
-        targetPoints = getDynamicConnectionPoints(
-          targetId === 'A' ? nodeA : nodeB, 
-          targetId === 'A' ? 'bottom' : 'top', 
-          cablesGroup.length, 
-          zoom
-        );
-      } else if (isACConnection) {
-        // For A-C connections, we need to account for existing A-B connections
-        const abConnectionKey = 'A-B';
-        const abConnectionCount = directNodeToNodeCables[abConnectionKey] ? directNodeToNodeCables[abConnectionKey].length : 0;
-        
-        if (sourceId === 'A') {
-          // If source is A, we need to offset the connection points by the number of A-B connections
-          const totalABottomConnections = abConnectionCount + cablesGroup.length;
-          const allABottomPoints = getDynamicConnectionPoints(nodeA, 'bottom', totalABottomConnections, zoom);
-          
-          // Use points after the A-B connections
-          sourcePoints = allABottomPoints.slice(abConnectionCount);
-          
-          // Get points on C normally
-          targetPoints = getDynamicConnectionPoints(nodeC, 'top', cablesGroup.length, zoom);
-        } else {
-          // If source is C, we need to offset the target (A) connection points
-          const totalABottomConnections = abConnectionCount + cablesGroup.length;
-          const allABottomPoints = getDynamicConnectionPoints(nodeA, 'bottom', totalABottomConnections, zoom);
-          
-          // Use points after the A-B connections
-          targetPoints = allABottomPoints.slice(abConnectionCount);
-          
-          // Get points on C normally
-          sourcePoints = getDynamicConnectionPoints(nodeC, 'top', cablesGroup.length, zoom);
-        }
-      } else if (isBCConnection) {
-        // Special case for B-C horizontal connections
-        const bNode = sourceId === 'B' ? sourceNode : targetNode;
-        const cNode = sourceId === 'C' ? sourceNode : targetNode;
-        
-        const bCenterY = bNode.y + bNode.height / 2;
-        const cCenterY = cNode.y + cNode.height / 2;
-        
-        // Get edge lengths for maximum spacing calculation
-        const bRightEdgeLength = bNode.height;
-        const cLeftEdgeLength = cNode.height;
-        
-        // Use the smaller of the two edges to ensure cables stay within bounds on both sides
-        const minEdgeLength = Math.min(bRightEdgeLength, cLeftEdgeLength);
-        
-        // Only apply spacing if needed based on zoom level and edge length
-        const bcSpacing = calculateDynamicSpacing(zoom, cablesGroup.length, minEdgeLength);
-        
-        sourcePoints = [];
-        targetPoints = [];
-        
-        for (let i = 0; i < cablesGroup.length; i++) {
-          // Calculate vertical offset from the center
-          const offset = cablesGroup.length > 1 && bcSpacing > 0 
-            ? ((i - (cablesGroup.length - 1) / 2) * bcSpacing) 
-            : 0;
-            
-          // Calculate y-position - same for both endpoints to ensure straight horizontal line
-          const yPos = bCenterY + offset;
-          
-          if (sourceId === 'B') {
-            sourcePoints.push({ x: bNode.x + bNode.width, y: yPos });
-            targetPoints.push({ x: cNode.x, y: yPos });
-          } else {
-            sourcePoints.push({ x: cNode.x, y: yPos });
-            targetPoints.push({ x: bNode.x + bNode.width, y: yPos });
-          }
-        }
-      }
-      
-      // Process each cable in the group
-      cablesGroup.forEach((cable, idx) => {
-        // Get source and target points
-        const sourcePoint = sourcePoints[idx];
-        const targetPoint = targetPoints[idx];
-        
-        if (!sourcePoint || !targetPoint) return;
-        
-        // Create the path based on connection type
-        const path = [];
-        path.push(sourcePoint);
-        
-        if (isBCConnection) {
-          // Special case for B-C horizontal routing
-          // Add perpendicular extension from source
-          path.push({ x: sourcePoint.x + (sourceId === 'B' ? minPerpendicularExtension : -minPerpendicularExtension), y: sourcePoint.y });
-          
-          // Add perpendicular extension to target
-          path.push({ x: targetPoint.x + (targetId === 'B' ? minPerpendicularExtension : -minPerpendicularExtension), y: targetPoint.y });
-        } else {
-          // A-B or A-C routing with vertical and horizontal segments
-          const isSourceA = sourceId === 'A';
-          const isTargetA = targetId === 'A';
-          
-          // Always add an initial perpendicular segment from the edge
-          path.push({ 
-            x: sourcePoint.x, 
-            y: sourcePoint.y + (isSourceA ? minPerpendicularExtension : -minPerpendicularExtension) 
-          });
-          
-          // Calculate vertical offset for spacing
-          const verticalOffset = calculateDynamicSpacing(zoom, cablesGroup.length, nodeA.width) > 0 
-            ? ((idx - (cablesGroup.length - 1) / 2) * calculateDynamicSpacing(zoom, cablesGroup.length, nodeA.width)) 
-            : 0;
-          
-          // Continue vertical segment
-          path.push({ 
-            x: sourcePoint.x, 
-            y: midpointY + verticalOffset 
-          });
-          
-          // Horizontal segment
-          path.push({ 
-            x: targetPoint.x, 
-            y: midpointY + verticalOffset 
-          });
-          
-          // Vertical segment to approach target
-          path.push({ 
-            x: targetPoint.x, 
-            y: targetPoint.y + (isTargetA ? minPerpendicularExtension : -minPerpendicularExtension) 
-          });
-        }
-        
-        // Final connection point
-        path.push(targetPoint);
-        
-        // Store the generated path
-        cableRoutes[cable.id] = path;
-      });
-    });
-    
-    // Process channel-based paths
-    Object.entries(channelCables).forEach(([channelId, cablesGroup]) => {
-      const channel = channels.find(c => c.id === channelId);
-      if (!channel || cablesGroup.length === 0) return;
-      
-      // Process each cable going through this channel
-      cablesGroup.forEach((cable, idx) => {
-        const path = [];
-        
-        // Get source and target IDs
-        const sourceId = cable.path[0];
-        const targetId = cable.path[2];
-        
-        // Get source and target nodes
-        const sourceNode = nodes.find(n => n.id === sourceId);
-        const targetNode = nodes.find(n => n.id === targetId);
+        const sourceNode = getElementById(sourceId);
+        const targetNode = getElementById(targetId);
         
         if (!sourceNode || !targetNode) return;
         
-        // Determine which edges to connect to
+        // Find optimal edges based on relative positions
+        const { source: sourceEdge, target: targetEdge } = 
+          determineOptimalEdges(sourceNode, targetNode);
+        
+        // Find connection points for this cable
+        const sourcePoint = getPointForCable(nodeConnectionPoints[sourceId][sourceEdge], cable.id);
+        const targetPoint = getPointForCable(nodeConnectionPoints[targetId][targetEdge], cable.id);
+        
+        if (!sourcePoint || !targetPoint) return;
+        
+        // Generate path
+        const path = generateOrthogonalPath(
+          sourcePoint, targetPoint,
+          { edge: sourceEdge }, { edge: targetEdge },
+          sourceNode, targetNode,
+          null, zoom
+        );
+        
+        // Store path
+        cableRoutes[cable.id] = path;
+      }
+      else if (cable.path.length === 3 && cable.path[1].includes('channel')) {
+        // Node -> Channel -> Node path
+        const sourceId = cable.path[0];
+        const channelId = cable.path[1];
+        const targetId = cable.path[2];
+        
+        const sourceNode = getElementById(sourceId);
+        const channel = getElementById(channelId);
+        const targetNode = getElementById(targetId);
+        
+        if (!sourceNode || !channel || !targetNode) return;
+        
+        // Determine edges based on channel position
         const sourceEdge = channel.y < sourceNode.y ? 'top' : 'bottom';
         const targetEdge = channel.y < targetNode.y ? 'top' : 'bottom';
         
-        // Get connection points on nodes
-        const sourcePoints = getDynamicConnectionPoints(sourceNode, sourceEdge, cablesGroup.length, zoom);
-        const targetPoints = getDynamicConnectionPoints(targetNode, targetEdge, cablesGroup.length, zoom);
+        // Find connection points
+        const sourcePoint = getPointForCable(nodeConnectionPoints[sourceId][sourceEdge], cable.id);
+        const channelPoint = getPointForCable(channelConnectionPoints[channelId], cable.id);
+        const targetPoint = getPointForCable(nodeConnectionPoints[targetId][targetEdge], cable.id);
         
-        // Get channel connection info (with vertical offset for spacing)
-        const channelInfo = getChannelConnectionPoints(channel, idx, cablesGroup.length, zoom);
+        if (!sourcePoint || !channelPoint || !targetPoint) return;
         
-        // Build the path
-        const sourcePoint = sourcePoints[idx];
-        const targetPoint = targetPoints[idx];
+        // Generate path through channel
+        const path = generateChannelPath(
+          sourcePoint, channelPoint, targetPoint,
+          sourceNode, targetNode, channel, zoom
+        );
         
-        // Start at source node
-        path.push(sourcePoint);
-        
-        // Connect to channel with proper spacing
-        path.push({ x: sourcePoint.x, y: channel.y + channelInfo.offset });
-        
-        // Horizontal segment along channel
-        path.push({ x: targetPoint.x, y: channel.y + channelInfo.offset });
-        
-        // Connect to target node
-        path.push(targetPoint);
-        
-        // Store the path
+        // Store path
         cableRoutes[cable.id] = path;
-      });
+      }
     });
     
     return cableRoutes;
+  };
+
+  // Helper to find connection point for a specific cable
+  const getPointForCable = (points, cableId) => {
+    return points.find(p => p.cableId === cableId);
   };
 
   // Draw the visualization with D3.js
@@ -531,7 +688,7 @@ const CableVisualization = () => {
           .attr("stroke-dasharray", "5,5")
           .attr("class", `channel channel-${channel.id}`);
       } else {
-        // Support for vertical channels (future)
+        // Vertical channel
         g.append("line")
           .attr("x1", channel.x)
           .attr("y1", 0)
@@ -570,6 +727,8 @@ const CableVisualization = () => {
     Object.entries(cableRoutes).forEach(([cableId, path]) => {
       const cable = cables.find(c => c.id === cableId);
       
+      if (!cable || !path) return;
+      
       g.append("path")
         .attr("d", lineGenerator(path))
         .attr("stroke", cable.color || "#999")
@@ -593,9 +752,9 @@ const CableVisualization = () => {
       .attr("font-weight", "bold")
       .text(d => d.id);
     
-    // Setup zoom behavior with limited scale
+    // Setup zoom behavior
     const zoom = d3.zoom()
-      .scaleExtent([0.5, 3.0]) // Limit maximum zoom from 0.5x to 3x
+      .scaleExtent([0.5, 3.0]) // Limit zoom from 0.5x to 3x
       .on("zoom", (event) => {
         setTransform(event.transform);
       });
