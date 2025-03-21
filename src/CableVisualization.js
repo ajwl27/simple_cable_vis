@@ -20,12 +20,27 @@ const CableVisualization = () => {
     { id: 'c1', source: 'A', target: 'B', color: 'blue' },
     { id: 'c2', source: 'A', target: 'B', color: 'orange' },
     { id: 'c3', source: 'A', target: 'B', color: 'green' },
-    { id: 'c4', source: 'B', target: 'C', color: 'blue' },
-    { id: 'c5', source: 'B', target: 'C', color: 'orange' },
-    { id: 'c6', source: 'A', target: 'C', color: 'blue' },
-    { id: 'c7', source: 'A', target: 'C', color: 'orange' },
-    { id: 'c8', source: 'A', target: 'C', color: 'green' }
+    { id: 'c4', source: 'B', target: 'C', color: 'red' },
+    { id: 'c5', source: 'B', target: 'C', color: 'purple' },
+    { id: 'c6', source: 'A', target: 'C', color: 'yellow' },
+    { id: 'c7', source: 'A', target: 'C', color: 'cyan' },
+    { id: 'c8', source: 'A', target: 'C', color: 'magenta' },
+    { id: 'c9',  source: 'A', target: 'C', color: 'lime' },
+    { id: 'c10', source: 'A', target: 'C', color: 'pink' },
+    { id: 'c11', source: 'A', target: 'C', color: 'teal' },
+    { id: 'c12', source: 'A', target: 'C', color: 'brown' },
+    { id: 'c13', source: 'A', target: 'C', color: 'coral' },
+    { id: 'c14', source: 'A', target: 'C', color: 'gold' },
+    { id: 'c15', source: 'A', target: 'C', color: 'indigo' },
+    { id: 'c16', source: 'A', target: 'C', color: 'maroon' },
+    { id: 'c17', source: 'A', target: 'C', color: 'olive' },
+    { id: 'c18', source: 'A', target: 'C', color: 'navy' },
+    { id: 'c19', source: 'A', target: 'C', color: 'navy' },
+    { id: 'c20', source: 'A', target: 'C', color: 'navy' },
+    { id: 'c21', source: 'A', target: 'C', color: 'navy' },
+    { id: 'c22', source: 'A', target: 'C', color: 'navy' }
   ];
+  
 
   // Handle window resize
   useEffect(() => {
@@ -40,37 +55,60 @@ const CableVisualization = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Calculate dynamic spacing based on zoom level and minimum visibility threshold
-  const calculateDynamicSpacing = (zoom, numCables) => {
+  // Calculate dynamic spacing based on zoom level, minimum visibility threshold, and maximum edge space
+  const calculateDynamicSpacing = (zoom, numCables, edgeLength) => {
+    // If only one cable or no cables, no spacing needed
+    if (numCables <= 1) return 0;
+    
     // Minimum spacing when zoomed out (cables start to overlap)
     const minSpacing = 1; 
     
     // Threshold zoom level where cables should start separating
-    const zoomThreshold = 0.3;
+    const zoomThreshold = 0.5;
     
-    // Base spacing that represents maximum separation at high zoom
-    const baseSpacing = 15;
+    // Maximum zoom level for fully separated cables
+    const maxZoomEffect = 3.0;
     
-    // If we're below the threshold or have only 1 cable, no spacing needed
-    if (zoom.k < zoomThreshold || numCables <= 1) {
+    // If we're below the threshold, no spacing needed
+    if (zoom.k < zoomThreshold) {
       return 0;
     }
     
-    // Calculate spacing that scales with zoom level, but with a minimum visibility threshold
-    const dynamicSpacing = minSpacing + (baseSpacing * (zoom.k - zoomThreshold));
+    // Calculate normalized zoom factor (0 to 1) for more gradual transitions
+    const normalizedZoom = Math.min(
+      (zoom.k - zoomThreshold) / (maxZoomEffect - zoomThreshold), 
+      1.0
+    );
     
-    return dynamicSpacing;
+    // Apply easing function for smoother progression (cubic easing)
+    const easedZoom = normalizedZoom * normalizedZoom * (3 - 2 * normalizedZoom);
+    
+    // Base spacing that represents maximum separation at full zoom
+    const baseSpacing = 80;
+    
+    // Calculate spacing that scales with zoom level using a smoother curve
+    const zoomBasedSpacing = minSpacing + (baseSpacing * easedZoom);
+    
+    // Calculate maximum spacing based on available edge length
+    // Use at most 90% of the edge length for spreading cables
+    const maxEdgeSpace = edgeLength;
+    
+    // Calculate maximum spacing between cables to fit within the edge
+    const maxSpacing = maxEdgeSpace / (numCables + 1);
+    
+    // Return the smaller of zoom-based spacing or maximum edge-based spacing
+    return Math.min(zoomBasedSpacing, maxSpacing);
   };
 
   // Calculate dynamic connection points for node edges based on zoom level
   const getDynamicConnectionPoints = (node, edge, numConnections, zoom) => {
     if (numConnections <= 0) return [];
     
-    // Spacing between connection points
-    const spacing = calculateDynamicSpacing(zoom, numConnections);
-    
     // Maximum available space on this edge
     const edgeLength = edge === 'top' || edge === 'bottom' ? node.width : node.height;
+    
+    // Spacing between connection points - now takes into account edge length
+    const spacing = calculateDynamicSpacing(zoom, numConnections, edgeLength);
     
     // Get node center
     const nodeCenter = {
@@ -113,19 +151,15 @@ const CableVisualization = () => {
     }
     
     // With multiple connections and spacing, distribute them evenly
-    // Calculate the total space needed
+    // Calculate the total space needed based on the actual calculated spacing
     const totalWidth = spacing * (numConnections - 1);
     
-    // Ensure we don't exceed the edge length (cap at 80% of edge)
-    const maxWidth = edgeLength * 0.8;
-    const actualWidth = Math.min(totalWidth, maxWidth);
-    
     // Start position (centered on the edge)
-    const startOffset = -actualWidth / 2;
+    const startOffset = -totalWidth / 2;
     
     // Generate evenly spaced points
     for (let i = 0; i < numConnections; i++) {
-      const offset = startOffset + (i * (actualWidth / (numConnections - 1)));
+      const offset = startOffset + (i * spacing);
       
       let point;
       switch (edge) {
@@ -165,6 +199,19 @@ const CableVisualization = () => {
   const calculateCableRoutes = (zoom) => {
     const cableRoutes = {};
     
+    // Find nodes
+    const nodeA = nodes.find(n => n.id === 'A');
+    const nodeB = nodes.find(n => n.id === 'B');
+    const nodeC = nodes.find(n => n.id === 'C');
+    
+    // Calculate midpoint for horizontal segment
+    const midpointX = (nodeB.x + nodeB.width / 2 + nodeC.x) / 2;
+    const midpointY = 250;
+    
+    // Minimum distance cables should extend perpendicular to an edge before changing direction
+    // Make this distance scale slightly with zoom for better appearance
+    const minPerpendicularExtension = 1 + (zoom.k * 2);
+    
     // Get cables by type
     const abCables = cables.filter(c => 
       (c.source === 'A' && c.target === 'B') || (c.source === 'B' && c.target === 'A')
@@ -177,15 +224,6 @@ const CableVisualization = () => {
     const bcCables = cables.filter(c => 
       (c.source === 'B' && c.target === 'C') || (c.source === 'C' && c.target === 'B')
     );
-    
-    // Find nodes
-    const nodeA = nodes.find(n => n.id === 'A');
-    const nodeB = nodes.find(n => n.id === 'B');
-    const nodeC = nodes.find(n => n.id === 'C');
-    
-    // Calculate midpoint for horizontal segment
-    const midpointX = (nodeB.x + nodeB.width / 2 + nodeC.x) / 2;
-    const midpointY = 250;
     
     // Get dynamic connection points for each edge based on zoom
     const aBottomPoints = getDynamicConnectionPoints(nodeA, 'bottom', abCables.length + acCables.length, zoom);
@@ -203,8 +241,15 @@ const CableVisualization = () => {
       const nodeB_centerY = nodeB.y + nodeB.height / 2;
       const nodeC_centerY = nodeC.y + nodeC.height / 2;
       
-      // Only apply spacing if needed based on zoom level
-      const bcSpacing = calculateDynamicSpacing(zoom, bcCableCount);
+      // Get edge lengths for maximum spacing calculation
+      const bRightEdgeLength = nodeB.height;
+      const cLeftEdgeLength = nodeC.height;
+      
+      // Use the smaller of the two edges to ensure cables stay within bounds on both sides
+      const minEdgeLength = Math.min(bRightEdgeLength, cLeftEdgeLength);
+      
+      // Only apply spacing if needed based on zoom level and edge length
+      const bcSpacing = calculateDynamicSpacing(zoom, bcCableCount, minEdgeLength);
       
       for (let i = 0; i < bcCableCount; i++) {
         // Calculate vertical offset from the center
@@ -222,7 +267,9 @@ const CableVisualization = () => {
     }
     
     // Calculate dynamic spacing for the main horizontal and vertical paths
-    const verticalSpacing = calculateDynamicSpacing(zoom, abCables.length + acCables.length);
+    // Get the height of A's bottom edge for maximum spacing calculation
+    const aBottomEdgeLength = nodeA.width;
+    const verticalSpacing = calculateDynamicSpacing(zoom, abCables.length + acCables.length, aBottomEdgeLength);
     
     // Process A-B connections
     abCables.forEach((cable, idx) => {
@@ -237,31 +284,43 @@ const CableVisualization = () => {
         // A to B
         path.push(aPoint);
         
+        // Always add an initial perpendicular segment from the edge
+        path.push({ x: aPoint.x, y: aPoint.y + minPerpendicularExtension });
+        
         // Calculate vertical offset based on position in the row of cables
         const verticalOffset = verticalSpacing > 0 ? ((idx - (abCables.length - 1) / 2) * verticalSpacing) : 0;
         
-        // First vertical segment directly down from A
+        // Continue vertical segment down from A
         path.push({ x: aPoint.x, y: midpointY + verticalOffset });
         
         // Horizontal segment toward B
         path.push({ x: bPoint.x, y: midpointY + verticalOffset });
         
-        // Final vertical segment to B
+        // Vertical segment to approach B
+        path.push({ x: bPoint.x, y: bPoint.y - minPerpendicularExtension });
+        
+        // Final perpendicular segment to B
         path.push(bPoint);
       } else {
         // B to A
         path.push(bPoint);
         
+        // Always add an initial perpendicular segment from the edge
+        path.push({ x: bPoint.x, y: bPoint.y - minPerpendicularExtension });
+        
         // Calculate vertical offset
         const verticalOffset = verticalSpacing > 0 ? ((idx - (abCables.length - 1) / 2) * verticalSpacing) : 0;
         
-        // First vertical segment up from B
+        // Continue vertical segment up from B
         path.push({ x: bPoint.x, y: midpointY + verticalOffset });
         
         // Horizontal segment toward A
         path.push({ x: aPoint.x, y: midpointY + verticalOffset });
         
-        // Final vertical segment to A
+        // Vertical segment to approach A
+        path.push({ x: aPoint.x, y: aPoint.y + minPerpendicularExtension });
+        
+        // Final perpendicular segment to A
         path.push(aPoint);
       }
       
@@ -281,38 +340,50 @@ const CableVisualization = () => {
         // A to C
         path.push(aPoint);
         
+        // Always add an initial perpendicular segment from the edge
+        path.push({ x: aPoint.x, y: aPoint.y + minPerpendicularExtension });
+        
         // Calculate vertical offset based on position in the row of cables
         const verticalOffset = verticalSpacing > 0 ? (((idx + abCables.length) - (abCables.length + acCables.length - 1) / 2) * verticalSpacing) : 0;
         
-        // First vertical segment directly down from A
+        // Continue vertical segment down from A
         path.push({ x: aPoint.x, y: midpointY + verticalOffset });
         
         // Horizontal segment toward C
         path.push({ x: cPoint.x, y: midpointY + verticalOffset });
         
-        // Final vertical segment to C
+        // Vertical segment to approach C
+        path.push({ x: cPoint.x, y: cPoint.y - minPerpendicularExtension });
+        
+        // Final perpendicular segment to C
         path.push(cPoint);
       } else {
         // C to A
         path.push(cPoint);
         
+        // Always add an initial perpendicular segment from the edge
+        path.push({ x: cPoint.x, y: cPoint.y - minPerpendicularExtension });
+        
         // Calculate vertical offset
         const verticalOffset = verticalSpacing > 0 ? (((idx + abCables.length) - (abCables.length + acCables.length - 1) / 2) * verticalSpacing) : 0;
         
-        // First vertical segment up from C
+        // Continue vertical segment up from C
         path.push({ x: cPoint.x, y: midpointY + verticalOffset });
         
         // Horizontal segment toward A
         path.push({ x: aPoint.x, y: midpointY + verticalOffset });
         
-        // Final vertical segment to A
+        // Vertical segment to approach A
+        path.push({ x: aPoint.x, y: aPoint.y + minPerpendicularExtension });
+        
+        // Final perpendicular segment to A
         path.push(aPoint);
       }
       
       cableRoutes[cable.id] = path;
     });
     
-    // Process B-C connections - truly direct horizontal routes with no unnecessary bends
+    // Process B-C connections - horizontal routes with proper perpendicular extensions
     const bcSpacing = calculateDynamicSpacing(zoom, bcCables.length);
     
     bcCables.forEach((cable, idx) => {
@@ -320,22 +391,32 @@ const CableVisualization = () => {
       const cPoint = cLeftPoints[idx];
       const path = [];
       
-      // For B-C connections, we want truly straight horizontal lines
-      // The key insight is that we need to ensure the bPoint and cPoint are at the same y-coordinate
+      // For B-C connections, we still want straight horizontal lines, but with proper perpendicular segments
+      // from the nodes to prevent cables from appearing to overlap with node edges
       
       if (cable.source === 'B' && cable.target === 'C') {
-        // B to C - completely straight path
+        // B to C
         path.push(bPoint);
         
-        // Direct straight line to destination
-        // If we're at the same y-level (which will happen when zoomed out), use a direct line
-        // If we're at different y-levels (when zoomed in and points are spread), the line is still direct
+        // Add perpendicular extension from B
+        path.push({ x: bPoint.x + minPerpendicularExtension, y: bPoint.y });
+        
+        // Add perpendicular extension to C
+        path.push({ x: cPoint.x - minPerpendicularExtension, y: cPoint.y });
+        
+        // Connection to C
         path.push(cPoint);
       } else {
-        // C to B - completely straight path
+        // C to B
         path.push(cPoint);
         
-        // Direct straight line
+        // Add perpendicular extension from C
+        path.push({ x: cPoint.x - minPerpendicularExtension, y: cPoint.y });
+        
+        // Add perpendicular extension to B
+        path.push({ x: bPoint.x + minPerpendicularExtension, y: bPoint.y });
+        
+        // Connection to B
         path.push(bPoint);
       }
       
@@ -365,20 +446,7 @@ const CableVisualization = () => {
       .y(d => d.y)
       .curve(d3.curveLinear);
     
-    // Draw cables
-    Object.entries(cableRoutes).forEach(([cableId, path]) => {
-      const cable = cables.find(c => c.id === cableId);
-      
-      g.append("path")
-        .attr("d", lineGenerator(path))
-        .attr("stroke", cable.color || "#999")
-        .attr("stroke-width", 2)
-        .attr("fill", "none")
-        .attr("class", "cable")
-        .attr("id", `cable-${cableId}`);
-    });
-    
-    // Draw nodes
+    // Draw nodes first (so cables appear on top)
     g.selectAll(".node")
       .data(nodes)
       .enter()
@@ -392,7 +460,20 @@ const CableVisualization = () => {
       .attr("stroke", "black")
       .attr("stroke-width", 2);
     
-    // Add labels to nodes
+    // Draw cables
+    Object.entries(cableRoutes).forEach(([cableId, path]) => {
+      const cable = cables.find(c => c.id === cableId);
+      
+      g.append("path")
+        .attr("d", lineGenerator(path))
+        .attr("stroke", cable.color || "#999")
+        .attr("stroke-width", 2)
+        .attr("fill", "none")
+        .attr("class", "cable")
+        .attr("id", `cable-${cableId}`);
+    });
+    
+    // Add labels to nodes (on top of everything)
     g.selectAll(".label")
       .data(nodes)
       .enter()
@@ -406,9 +487,9 @@ const CableVisualization = () => {
       .attr("font-weight", "bold")
       .text(d => d.id);
     
-    // Setup zoom behavior
+    // Setup zoom behavior with limited scale
     const zoom = d3.zoom()
-      .scaleExtent([0.1, 10])
+      .scaleExtent([0.5, 3.0]) // Limit maximum zoom to 3x
       .on("zoom", (event) => {
         setTransform(event.transform);
       });
