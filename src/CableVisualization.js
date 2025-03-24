@@ -20,14 +20,16 @@ const CableVisualization = () => {
   const nodes = [
     { id: 'A', x: 400, y: 100, width: 80, height: 80 },
     { id: 'B', x: 200, y: 300, width: 80, height: 80 },
-    { id: 'C', x: 600, y: 300, width: 80, height: 80 }
+    { id: 'C', x: 600, y: 300, width: 80, height: 80 },
+    { id: 'D', x: 500, y: 200, width: 80, height: 80 },
+    { id: 'E', x: 250, y: 125, width: 80, height: 80 }
   ];
-
+  
   const channels = [
-    { id: 'channel1', y: 50, label: "Channel", labelX: 50, orientation: 'horizontal' }
+    { id: 'channel1', y: 50, label: "Channel", labelX: 50, orientation: 'horizontal' },
+    { id: 'channel2', x: 150, label: "Channel2", labelY: 150, orientation: 'vertical' }
   ];
 
-  // Define cables with explicit routing paths
   const cables = [
     { id: 'c1', path: ['A', 'B'], color: 'blue' },
     { id: 'c2', path: ['A', 'B'], color: 'orange' },
@@ -44,10 +46,14 @@ const CableVisualization = () => {
     { id: 'c13', path: ['A', 'C'], color: 'coral' },
     { id: 'c14', path: ['A', 'C'], color: 'gold' },
     { id: 'c15', path: ['A', 'C'], color: 'indigo' },
-    // These two go via the channel
-    { id: 'c16', path: ['C', 'channel1', 'A'], color: 'maroon' },
+    { id: 'c16', path: ['C', 'channel1', 'A'], color: 'maroon' },  
     { id: 'c17', path: ['C', 'channel1', 'A'], color: 'olive' },
-    { id: 'c18', path: ['C', 'A'], color: 'navy' }
+    { id: 'c18', path: ['C', 'A'], color: 'navy' },
+    { id: 'c19', path: ['B','channel2', 'E'], color: 'navy' },
+    { id: 'c20', path: ['A', 'channel1', 'E'], color: 'navy' },
+    { id: 'c21', path: ['C', 'E'], color: 'navy' },
+    { id: 'c22', path: ['D', 'E'], color: 'navy' },
+    { id: 'c23', path: ['D', 'A'], color: 'navy' }
   ];
 
   // Handle window resize
